@@ -1,0 +1,311 @@
+name: 台操盤V6_官方收盤自動更新
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 台灣時間週一至週五 17:37，UTC 09:37；假日沿用最新交易日資料
+    - cron: '37 9 * * 1-5'
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: taicaopan-v6-public-market-feed
+  cancel-in-progress: false
+
+jobs:
+  update-public-daily-prices:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: 取得公開網站程式
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: 設定 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: 下載證交所公開收盤資料
+        shell: bash
+        run: |
+          cat > /tmp/taicaopan_market_update.py <<'PY'
+          #!/usr/bin/env python3
+          """Get public TWSE daily closing quotes; never access private market-data keys."""
+          from __future__ import annotations
+          import json
+          import math
+          import os
+          import re
+          import time
+          import urllib.error
+          import urllib.request
+          from datetime import datetime, date
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+          
+          DATA_URL = 'https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL'
+          WATCH = ('0050', '2330', '2324', '2409', '00631L', '00632R')
+          HERE = Path('.')
+          OUT = HERE / 'market-data.json'
+          HTML = HERE / 'index.html'
+          JS = HERE / 'market-widget.js'
+          
+          
+          def to_float(value):
+              s = str(value or '').replace(',', '').strip()
+              if not s or s in ('--', '---', '－', 'X', '除權息'):
+                  return None
+              try:
+                  v = float(s)
+                  return v if math.isfinite(v) else None
+              except ValueError:
+                  return None
+          
+          
+          def iso_date(value):
+              s = str(value or '').replace('/', '').replace('-', '').strip()
+              if re.fullmatch(r'\d{7}', s):
+                  return f'{int(s[:3])+1911:04d}-{s[3:5]}-{s[5:7]}'
+              if re.fullmatch(r'\d{8}', s):
+                  return f'{s[:4]}-{s[4:6]}-{s[6:8]}'
+              return None
+          
+          
+          def fetch_json():
+              req = urllib.request.Request(DATA_URL, headers={
+                  'User-Agent': 'Mozilla/5.0 (compatible; TaicaopanV6/1.0; public-data-research)',
+                  'Accept': 'application/json',
+              })
+              for attempt in range(4):
+                  try:
+                      with urllib.request.urlopen(req, timeout=40) as resp:
+                          payload = json.loads(resp.read().decode('utf-8-sig'))
+                      if not isinstance(payload, list):
+                          raise RuntimeError('證交所 API 格式異常：非 JSON 陣列')
+                      return payload
+                  except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
+                      if attempt == 3:
+                          raise RuntimeError('證交所 API 連線失敗，保留上一次資料') from exc
+                      print('暫時無法取得資料，重試中：', type(exc).__name__, flush=True)
+                      time.sleep(4 + 5 * attempt)
+              raise RuntimeError('未取得資料')
+          
+          
+          def build_feed(rows):
+              latest = None
+              filtered = []
+              today = datetime.now(ZoneInfo('Asia/Taipei')).date()
+              for item in rows:
+                  symbol = str(item.get('Code', '')).strip()
+                  if symbol not in WATCH:
+                      continue
+                  d = iso_date(item.get('Date'))
+                  if d is None:
+                      continue
+                  try:
+                      day = date.fromisoformat(d)
+                  except ValueError:
+                      continue
+                  if day > today:
+                      continue
+                  close = to_float(item.get('ClosingPrice'))
+                  if close is None or close <= 0:
+                      continue
+                  if latest is None or d > latest:
+                      latest = d
+                  filtered.append((d, symbol, item, close))
+              if latest is None:
+                  raise RuntimeError('無有效收盤行情；不發布空白報價')
+              result = []
+              for symbol in WATCH:
+                  matches = [(r, c) for d, s, r, c in filtered if d == latest and s == symbol]
+                  if not matches:
+                      continue
+                  row, close = matches[0]
+                  result.append({
+                      'symbol': symbol,
+                      'name': str(row.get('Name', '')).strip(),
+                      'close': close,
+                      'change': to_float(row.get('Change')),
+                      'open': to_float(row.get('OpeningPrice')),
+                      'high': to_float(row.get('HighestPrice')),
+                      'low': to_float(row.get('LowestPrice')),
+                      'volume_shares': to_float(row.get('TradeVolume')),
+                  })
+              return {
+                  'schema_version': 1,
+                  'source': '臺灣證券交易所 OpenAPI / STOCK_DAY_ALL',
+                  'source_url': DATA_URL,
+                  'market': 'TWSE',
+                  'session_date': latest,
+                  'updated_at': datetime.now(ZoneInfo('Asia/Taipei')).isoformat(timespec='seconds'),
+                  'data_type': '收盤後歷史行情（非即時）',
+                  'is_realtime': False,
+                  'notes': '僅公開收盤行情，不包含選股訊號、私人回測或獲利機率。',
+                  'quotes': result,
+              }
+          
+          
+          def write_feed(data):
+              if OUT.exists():
+                  try:
+                      previous = json.loads(OUT.read_text(encoding='utf-8'))
+                      if str(previous.get('session_date', '')) > data['session_date']:
+                          raise RuntimeError('證交所資料早於已公布日期；停止覆蓋')
+                      if previous.get('session_date') == data['session_date'] and previous.get('quotes') == data['quotes']:
+                          print('已是相同交易日行情，無需更新', flush=True)
+                          return False
+                  except json.JSONDecodeError:
+                      raise RuntimeError('現有市場資料格式異常，停止覆蓋')
+              OUT.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+              return True
+          
+          
+          def setup_widget(widget):
+              if not JS.exists():
+                  JS.write_text(widget, encoding='utf-8')
+              if not HTML.exists():
+                  raise RuntimeError('找不到網站 index.html，停止變更')
+              html = HTML.read_text(encoding='utf-8')
+              marker = '<script defer src="market-widget.js"></script>'
+              if 'market-widget.js' not in html:
+                  m = re.search(r'</body\s*>', html, flags=re.IGNORECASE)
+                  if not m:
+                      raise RuntimeError('網站 index.html 沒有 </body>；不自動修改')
+                  html = html[:m.start()] + marker + '\n' + html[m.start():]
+                  HTML.write_text(html, encoding='utf-8')
+          
+          
+          def main(widget):
+              # Do not modify site until official quotes have passed validation.
+              feed = build_feed(fetch_json())
+              write_feed(feed)
+              setup_widget(widget)
+              print(f"證交所日期：{feed['session_date']}；可用股票：{len(feed['quotes'])} 檔", flush=True)
+              print('僅公開股票收盤行情，無任何私人帳戶或富果金鑰。', flush=True)
+          
+          
+          if __name__ == '__main__':
+              raise SystemExit('Run via embedded workflow')
+          PY
+          cat > /tmp/taicaopan_widget.js <<'JS'
+          /* @台操盤V6 官方收盤價小工具。僅讀取 GitHub Pages 的公開 market-data.json。 */
+          (() => {
+            'use strict';
+            const target = document.querySelector('#view-overview .metrics');
+            if (!target || document.getElementById('twsePublicPrices')) return;
+            const box = document.createElement('article');
+            box.id = 'twsePublicPrices';
+            box.className = 'panel';
+            box.style.marginBottom = '13px';
+            const h = document.createElement('h2');
+            h.textContent = '證交所官方收盤行情';
+            h.style.margin = '0 0 5px';
+            h.style.fontSize = '16px';
+            const note = document.createElement('p');
+            note.style.color = '#a0b2c9';
+            note.style.fontSize = '12px';
+            note.textContent = '資料讀取中，非即時行情';
+            note.style.margin = '0 0 10px';
+            const prices = document.createElement('div');
+            prices.style.display = 'grid';
+            prices.style.gridTemplateColumns = 'repeat(auto-fit,minmax(125px,1fr))';
+            prices.style.gap = '8px';
+            const button = document.createElement('button');
+            button.textContent = '重新讀取收盤資料';
+            button.className = 'button secondary';
+            button.style.marginTop = '10px';
+            button.style.fontSize = '12px';
+            box.append(h, note, prices, button);
+            target.insertAdjacentElement('afterend', box);
+          
+            const number = value => new Intl.NumberFormat('zh-TW', {
+              maximumFractionDigits: 2
+            }).format(value);
+          
+            async function update() {
+              note.textContent = '正在讀取已發布的收盤資料…';
+              try {
+                const url = new URL('market-data.json', document.baseURI);
+                url.searchParams.set('refresh', String(Date.now()));
+                const res = await fetch(url.href, { cache: 'no-store' });
+                if (!res.ok) throw Error('HTTP ' + res.status);
+                const data = await res.json();
+                if (data.source !== '臺灣證券交易所 OpenAPI / STOCK_DAY_ALL' ||
+                    !Array.isArray(data.quotes) || !/^\d{4}-\d{2}-\d{2}$/.test(data.session_date)) {
+                  throw Error('資料格式不完整');
+                }
+                prices.replaceChildren();
+                for (const q of data.quotes) {
+                  if (!Number.isFinite(q.close) || q.close <= 0) continue;
+                  const card = document.createElement('div');
+                  card.style.cssText = 'background:#0b182b;border:1px solid #2b415d;border-radius:9px;padding:10px;';
+                  const name = document.createElement('div');
+                  name.style.color = '#b9cde5';
+                  name.style.fontSize = '11px';
+                  name.textContent = q.symbol + ' ' + q.name;
+                  const close = document.createElement('strong');
+                  close.style.display = 'block';
+                  close.style.fontSize = '19px';
+                  close.style.marginTop = '4px';
+                  close.textContent = number(q.close);
+                  const change = document.createElement('div');
+                  change.style.fontSize = '12px';
+                  change.style.marginTop = '3px';
+                  change.style.color = q.change > 0 ? '#ff798b' : q.change < 0 ? '#51ddba' : '#a0b2c9';
+                  change.textContent = Number.isFinite(q.change)
+                    ? '當日漲跌 ' + (q.change > 0 ? '+' : '') + number(q.change)
+                    : '當日漲跌未提供';
+                  card.append(name, close, change);
+                  prices.appendChild(card);
+                }
+                if (!prices.childElementCount) throw Error('本次沒有可顯示的股票');
+                note.textContent = '交易日：' + data.session_date + ' ｜官方收盤資料，非盤中即時；不包含交易建議';
+              } catch (err) {
+                prices.replaceChildren();
+                note.textContent = '官方收盤資料暫無法讀取（' + String(err.message || '未知原因') + '），請稍後再試';
+              }
+            }
+            button.addEventListener('click', update);
+            update();
+          })();
+          JS
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, '/tmp')
+          import taicaopan_market_update as update
+          update.main(Path('/tmp/taicaopan_widget.js').read_text(encoding='utf-8'))
+          PY
+      - name: 更新網站的公開資料
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add market-data.json market-widget.js index.html
+          if git diff --cached --quiet; then
+            echo '本次資料沒有改變，不需提交'
+          else
+            git commit -m '更新台操盤V6官方收盤行情'
+            git push
+          fi
+      - name: 設定 GitHub Pages
+        uses: actions/configure-pages@v5
+      - name: 上傳已更新網站
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: .
+
+  deploy-pages:
+    needs: update-public-daily-prices
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 正式部署 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
