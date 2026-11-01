@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#080f1f">
+<meta name="description" content="@台操盤 V6 繁體中文研究儀表板：帳戶獲利達標、回測、風險及資料品質。">
+<title>@台操盤 V6｜專業看盤與獲利決策中心</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar" aria-label="功能導覽">
+    <div class="brand"><div class="logo">台</div><div><strong>台操盤 <span>V6</span></strong><small>研究與決策中心</small></div></div>
+    <div class="sidehint">WORKSPACE / 工作區</div>
+    <nav class="nav" id="sideNav">
+      <button data-view="overview" class="selected"><span>◫</span> 市場總覽</button>
+      <button data-view="scanner"><span>⌕</span> 策略選股</button>
+      <button data-view="goal"><span>◎</span> 獲利達標日</button>
+      <button data-view="backtest"><span>⌁</span> 歷史回測</button>
+      <button data-view="risk"><span>◇</span> 風險與資金</button>
+      <button data-view="data"><span>⇧</span> 資料中心</button>
+    </nav>
+    <div class="sidefoot"><span class="dot caution"></span><span id="sideStatus">等待匯入報告</span><p>本系統只讀取你自行選擇的本機檔案，不會索取 API Key。</p></div>
+  </aside>
+  <main class="main">
+    <header class="topbar">
+      <div><div class="eyebrow">QUANT RESEARCH / 台股研究</div><h1 id="viewTitle">市場總覽</h1><p id="viewDesc">讓資料、策略、獲利日期與風險放在同一張決策地圖上。</p></div>
+      <div class="top-actions"><span class="status-badge"><span class="dot" id="statusDot"></span><span id="statusText">未連線・沒有行情</span></span><button class="primary small" id="headerImport">匯入報告 <span aria-hidden="true">↗</span></button></div>
+    </header>
+    <div class="notice" id="notice" role="status">目前尚未匯入回測資料。所有績效與日期都顯示為未驗證，請先到「資料中心」匯入 GitHub Actions ZIP。</div>
+
+    <section class="view active" id="view-overview">
+      <div class="metrics">
+        <article class="metric"><div class="metric-label">研究本金 <span>01</span></div><div class="metric-value" id="mInitial">NT$50,000</div><div class="metric-foot">以單一帳戶計算</div></article>
+        <article class="metric"><div class="metric-label">帳戶獲利目標 <span>02</span></div><div class="metric-value teal" id="mGoal">NT$52,500</div><div class="metric-foot">扣成本後 +5% / +NT$2,500</div></article>
+        <article class="metric"><div class="metric-label">樣本外期末帳戶 <span>03</span></div><div class="metric-value" id="mFinal">尚無資料</div><div class="metric-foot" id="mPnl">尚無可驗證績效</div></article>
+        <article class="metric"><div class="metric-label">首次達標日期 <span>04</span></div><div class="metric-value smaller" id="mDate">無法估計</div><div class="metric-foot" id="mDateHint">需完整歷史交易路徑</div></article>
+      </div>
+      <div class="layout-two">
+        <article class="panel large"><div class="panel-head"><div><div class="overline">ACCOUNT EQUITY</div><h2>帳戶資金曲線</h2></div><span class="chip" id="equityTag">等待交易紀錄</span></div><div id="equityChart" class="chartarea"><div class="empty"><div class="empty-icon">⌁</div>匯入 V5.4 報告後顯示歷史模擬帳戶資金曲線</div></div><div class="chartlegend"><span><i class="legend blue"></i>已實現帳戶價值</span><span><i class="legend green"></i>52,500 元目標線</span></div></article>
+        <article class="panel"><div class="panel-head"><div><div class="overline">DECISION STATUS</div><h2>交易決策狀態</h2></div><span class="chip muted" id="decisionTag">待驗證</span></div><div id="decisionBody" class="stack"><div class="empty">沒有通過驗證的最新進場訊號，不提供虛構進場價。</div></div><div class="thin-line"></div><div class="small-note">系統只顯示資料支持的結論；沒有訊號不代表股價一定不會上漲。</div></article>
+      </div>
+      <div class="layout-three">
+        <article class="panel"><div class="panel-head"><div><div class="overline">RESEARCH COVERAGE</div><h2>資料完整度</h2></div></div><div class="big" id="coverageValue">未提供</div><div class="progress"><div id="coverageBar"></div></div><div class="small-note" id="coverageNote">目前沒有批次掃描紀錄</div></article>
+        <article class="panel"><div class="panel-head"><div><div class="overline">OOS / OUT OF SAMPLE</div><h2>獨立樣本外交易</h2></div></div><div class="big" id="tradesValue">未提供</div><div class="small-note" id="tradesNote">勝率與淨利需經成本後驗證</div></article>
+        <article class="panel"><div class="panel-head"><div><div class="overline">RISK CONTROL</div><h2>最大已實現回撤</h2></div></div><div class="big" id="drawdownValue">未提供</div><div class="small-note" id="drawdownNote">非完整盤中最大回撤</div></article>
+      </div>
+      <div class="layout-two">
+        <article class="panel large"><div class="panel-head"><div><div class="overline">PRICE CHART / OPTIONAL</div><h2>個股日 K 與成交量</h2></div><span class="chip" id="klineTag">尚未載入 K 線</span></div><div class="kline-tools"><input id="chartSymbol" inputmode="numeric" placeholder="輸入股票代號，例如 2324" aria-label="查看股票代號" maxlength="8"><label for="priceFile" class="filebtn">匯入日K CSV</label><input type="file" id="priceFile" accept=".csv,text/csv" hidden></div><div id="klineChart" class="chartarea" style="min-height:260px"><div class="empty">匯入含日期、開高低收及成交量的 CSV 後顯示。歷史回測 ZIP 不包含原始日 K。</div></div><p class="small-note">技術圖只使用已匯入的歷史資料；非即時行情，也不自動推算進場訊號。</p></article>
+        <article class="panel"><div class="panel-head"><div><div class="overline">CORE CHECKLIST</div><h2>資料與風險狀態</h2></div></div><div id="healthChecks" class="stack"></div></article>
+      </div>
+    </section>
+
+    <section class="view" id="view-scanner">
+      <article class="panel"><div class="panel-head"><div><div class="overline">STRATEGY DISCOVERY</div><h2>研究候選與獨立驗證</h2></div><span class="chip" id="scannerCount">0 組</span></div><p class="small-note">驗證期正報酬不等於獨立樣本外成功；未通過研究門檻的候選僅供觀察，不構成交易建議。</p><div class="filter-row"><input id="strategySearch" placeholder="搜尋股票代號或策略名稱" aria-label="搜尋策略"><select id="strategySort" aria-label="策略排序"><option value="score">驗證得分排序</option><option value="pnl">驗證淨損益排序</option><option value="trades">驗證筆數排序</option></select><select id="strategyFilter" aria-label="策略篩選"><option value="all">顯示所有</option><option value="passing">通過驗證期初篩</option><option value="positive">驗證淨利為正</option></select></div><div id="strategyTable" class="table-scroll"></div><div id="strategyFooter" class="small-note"></div></article>
+      <article class="panel"><div class="panel-head"><div><div class="overline">LATEST SIGNAL</div><h2>最新候選訊號</h2></div></div><div id="latestSignals" class="stack"></div><p class="small-note">沒有當期訊號時顯示空白，不會把驗證期間的進場價當成今天的報價。</p></article>
+    </section>
+
+    <section class="view" id="view-goal">
+      <div class="layout-two"><article class="panel"><div class="panel-head"><div><div class="overline">PROFIT TARGET</div><h2>你的資金與目標</h2></div></div><div class="formgrid"><label>本金（新台幣）<input id="settingCapital" type="number" min="1000" max="10000000" value="50000" step="1000"></label><label>扣成本後獲利目標（%）<input id="settingTarget" type="number" min="0.1" max="100" value="5" step="0.5"></label></div><div class="target-panel"><div><span>你設定的帳戶目標</span><strong id="goalAmount">NT$52,500</strong></div><div><span>需累積淨賺</span><strong id="goalProfit">NT$2,500</strong></div></div><div class="warning" id="scenarioWarning">更改本金或目標只會改變情境數字，不能將舊回測自動變成新本金的績效；如需驗證請重新回測。</div></article>
+      <article class="panel"><div class="panel-head"><div><div class="overline">FIRST PASSAGE</div><h2>首次達標日期</h2></div></div><div class="big" id="goalFirst">無法估計</div><div class="small-note" id="goalSummary">沒有已驗證的達標路徑或未來機率模型。</div><div class="thin-line"></div><div class="stack" id="goalCriteria"></div></article></div>
+      <article class="panel"><div class="panel-head"><div><div class="overline">TIME HORIZONS</div><h2>不同期限的歷史觀測與未來預測</h2></div><span class="chip">5～360 交易日</span></div><p class="small-note">歷史觀測頻率和「未來達標機率」是兩回事；沒有獨立校準模型時，未來預測一律顯示「不可估計」。</p><div id="horizonTable" class="table-scroll"></div></article>
+    </section>
+
+    <section class="view" id="view-backtest">
+      <div class="metrics mini"><article class="metric"><div class="metric-label">研究參數組合</div><div class="metric-value" id="btStrategies">—</div></article><article class="metric"><div class="metric-label">驗證期正報酬組合</div><div class="metric-value" id="btPositive">—</div></article><article class="metric"><div class="metric-label">樣本外完成交易</div><div class="metric-value" id="btTrades">—</div></article><article class="metric"><div class="metric-label">樣本外已實現淨損益</div><div class="metric-value" id="btPnl">—</div></article></div>
+      <article class="panel"><div class="panel-head"><div><div class="overline">EXECUTION LEDGER</div><h2>獨立樣本外完整交易明細</h2></div><span class="chip">成本後</span></div><div id="tradeTable" class="table-scroll"></div><p class="small-note">本表依匯入報告紀錄，無法替代成交所需的券源、滑價、除權息與盤中價格驗證。</p></article>
+      <article class="panel"><div class="panel-head"><div><div class="overline">VALIDATION</div><h2>回測可信度與未解決限制</h2></div></div><div id="backtestWarnings" class="stack"></div></article>
+    </section>
+
+    <section class="view" id="view-risk">
+      <div class="layout-two"><article class="panel"><div class="panel-head"><div><div class="overline">POSITION RISK</div><h2>每筆交易風險試算</h2></div></div><div class="formgrid"><label>單筆計畫風險（%）<input type="number" id="riskPct" value="1" step="0.25" min="0.1" max="20"></label><label>最大帳戶回撤警戒（%）<input type="number" id="maxDDPct" value="5" step="1" min="1" max="50"></label></div><div class="target-panel"><div><span>單筆計畫風險上限</span><strong id="riskBudget">NT$500</strong></div><div><span>帳戶回撤警戒額</span><strong id="riskDrawdown">NT$2,500</strong></div></div><p class="small-note">這是計畫風險，不保證停損必定成交；跳空、漲跌停、滑價可能造成更大損失。</p></article>
+      <article class="panel"><div class="panel-head"><div><div class="overline">REALIZED RISK</div><h2>歷史風險觀測</h2></div></div><div id="riskObservations" class="stack"></div></article></div>
+      <article class="panel"><div class="panel-head"><div><div class="overline">LIVE MARKET / DATA ACCESS</div><h2>尚待接入的資料模組</h2></div></div><div class="modules" id="modules"></div><p class="small-note">未接入的項目必須明確顯示缺漏；逐筆明細不能直接判定成交者是外資、主力或散戶。</p></article>
+    </section>
+
+    <section class="view" id="view-data">
+      <div class="layout-two"><article class="panel"><div class="panel-head"><div><div class="overline">LOCAL IMPORT</div><h2>一鍵匯入回測報告</h2></div></div><div class="uploadbox"><div class="upload-icon">⇧</div><strong>GitHub Actions 報告 ZIP</strong><p>支援 V5.4 原始 ZIP，直接解析裡面的繁體中文 CSV 和 TXT。所有處理都在瀏覽器本機完成。</p><label class="filebtn primary" for="artifactFile">選擇 ZIP 或 JSON</label><input type="file" id="artifactFile" accept=".zip,.json,application/json,application/zip" hidden></div><p class="small-note" id="importStatus">尚未匯入任何檔案。</p><div class="buttonrow"><button class="button secondary" id="clearData">清除這次匯入的資料</button><button class="button secondary" id="exportSummary">下載中文分析摘要</button></div></article>
+      <article class="panel"><div class="panel-head"><div><div class="overline">DATA PROVENANCE</div><h2>資料品質總覽</h2></div></div><div class="stack" id="dataDetails"></div></article></div>
+      <article class="panel"><div class="panel-head"><div><div class="overline">ARCHITECTURE / ROADMAP</div><h2>正式自動化系統的接線方式</h2></div></div><div class="pipeline"><div><strong>① 私有 GitHub + Fugle</strong><p>取得行情、驗證 API 速率與交易日資料</p></div><div class="pipearrow">→</div><div><strong>② V5.4 研究引擎</strong><p>做樣本外回測、策略篩選與成本風控</p></div><div class="pipearrow">→</div><div><strong>③ 受保護資料管道</strong><p>將中文報告轉成 JSON，不公開帳戶與交易資料</p></div><div class="pipearrow">→</div><div><strong>④ V6 iPhone 儀表板</strong><p>顯示獲利機會、首次達標時間與風險</p></div></div><div class="warning">重要：一般 GitHub Pages 網站即使原始儲存庫是私人，網頁仍可能對外公開。不要將 API Key、Webhook 或私人報告直接放入可公開存取的前端檔案。</div></article>
+    </section>
+
+    <footer class="footer">@台操盤 V6 · 繁體中文 · 研究用途非獲利保證 · 無即時行情時不產生虛構訊號 · <span id="footerTime">等待資料</span></footer>
+  </main>
+</div>
+<script src="vendor/jszip.min.js"></script>
+<script src="app.js"></script>
+</body></html>
