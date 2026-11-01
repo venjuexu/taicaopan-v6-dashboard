@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "source": "臺灣證券交易所 OpenAPI / STOCK_DAY_ALL",
+  "source_url": "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL",
+  "market": "TWSE",
+  "session_date": "2026-10-30",
+  "updated_at": "2026-11-01T11:46:24+08:00",
+  "data_type": "收盤後歷史行情（非即時）",
+  "is_realtime": false,
+  "notes": "僅公開收盤行情，不包含選股訊號、私人回測或獲利機率。",
+  "quotes": [
+    {
+      "symbol": "0050",
+      "name": "元大台灣50",
+      "close": 104.95,
+      "change": -2.3,
+      "open": 104.8,
+      "high": 105.3,
+      "low": 103.85,
+      "volume_shares": 227283960.0
+    },
+    {
+      "symbol": "2330",
+      "name": "台積電",
+      "close": 2370.0,
+      "change": -45.0,
+      "open": 2380.0,
+      "high": 2380.0,
+      "low": 2360.0,
+      "volume_shares": 36615931.0
+    },
+    {
+      "symbol": "2324",
+      "name": "仁寶",
+      "close": 35.2,
+      "change": -1.45,
+      "open": 36.0,
+      "high": 36.0,
+      "low": 34.6,
+      "volume_shares": 46953653.0
+    },
+    {
+      "symbol": "2409",
+      "name": "友達",
+      "close": 30.65,
+      "change": -3.4,
+      "open": 30.95,
+      "high": 31.55,
+      "low": 30.65,
+      "volume_shares": 296771840.0
+    },
+    {
+      "symbol": "00631L",
+      "name": "元大台灣50正2",
+      "close": 34.16,
+      "change": -1.73,
+      "open": 34.35,
+      "high": 34.55,
+      "low": 33.69,
+      "volume_shares": 404996978.0
+    },
+    {
+      "symbol": "00632R",
+      "name": "元大台灣50反1",
+      "close": 10.08,
+      "change": 0.23,
+      "open": 10.06,
+      "high": 10.16,
+      "low": 10.02,
+      "volume_shares": 178336689.0
+    }
+  ]
+}
